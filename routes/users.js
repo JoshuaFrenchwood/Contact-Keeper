@@ -2,7 +2,9 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
 const { check, validationResult } = require("express-validator");
-const bcrypt = require('bcryptjs');
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const config = require("config");
 
 //@route GET api/auth
 //@desc Register A User
@@ -22,38 +24,51 @@ router.post(
   ],
   async (req, res) => {
     const errors = validationResult(req);
-    if(!errors.isEmpty()){
-        return res.status(400).json({errors: errors.array()})
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
     }
 
-    const {name, email, password} = req.body;
+    const { name, email, password } = req.body;
 
     try {
-        let user = await User.findOne({email});
+      let user = await User.findOne({ email });
 
-        if(user){
-            return res.status(400).json({msg: "User already exsist"});
+      if (user) {
+        return res.status(400).json({ msg: "User already exsist" });
+      }
+
+      user = new User({
+        name,
+        email,
+        password
+      });
+
+      const salt = await bcrypt.genSalt(10);
+
+      user.password = await bcrypt.hash(password, salt);
+
+      await user.save();
+
+      const payload = {
+        user: {
+          id: user.id
         }
+      };
 
-        user = new User({
-            name,
-            email,
-            password
-        });
-
-        const salt = await bcrypt.genSalt(10);
-
-        user.password = await bcrypt.hash(password, salt);
-
-        await user.save();
-
-        res.status(200).json({msg:"User Saved"});
-        
+      jwt.sign(
+        payload,
+        config.get("jwtSecret"),
+        {
+          expiresIn: 360000
+        },
+        (err, token) => {
+          if (err) throw err;
+          res.json({ token });
+        }
+      );
     } catch (err) {
-
-        console.error(err.message);
-        res.status(500).send("Server Error");
-        
+      console.error(err.message);
+      res.status(500).send("Server Error");
     }
   }
 );
